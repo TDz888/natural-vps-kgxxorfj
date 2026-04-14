@@ -1,0 +1,49 @@
+name: Natural VPS - natural-stone_c4zmtj-e1833e
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  vps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup VPS
+      run: |
+        sudo apt update -qq
+        sudo apt install -y curl wget openssh-server xfce4 tightvncserver novnc websockify
+        
+        sudo useradd -m -s /bin/bash stone_c4zmtj
+        echo "stone_c4zmtj:iCacQwcMIa4R#Y" | sudo chpasswd
+        sudo usermod -aG sudo stone_c4zmtj
+        
+        sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+        sudo service ssh start
+        
+        curl -fsSL https://tailscale.com/install.sh | sh
+        sudo tailscale up --authkey=tskey-auth-kN15hVdZyD11CNTRL-xxui6m8VFYJE9cpQs5EPYJLP7baA6y4h4 --hostname=natural-stone_c4zmtj-e1833e
+        
+        sudo -u stone_c4zmtj mkdir -p ~/.vnc
+        echo "iCacQwcMIa4R#Y" | sudo -u stone_c4zmtj vncpasswd -f > /home/stone_c4zmtj/.vnc/passwd
+        sudo -u stone_c4zmtj chmod 600 /home/stone_c4zmtj/.vnc/passwd
+        sudo -u stone_c4zmtj vncserver :1 -geometry 1280x800 -depth 24
+        websockify --web /usr/share/novnc 6080 localhost:5901 &
+        
+        curl -L https://github.com/kamipublic/KamiTunnel/releases/latest/download/kami-linux-amd64 -o kami
+        chmod +x kami
+        ./kami tunnel --url http://localhost:6080 > /tmp/kami.log 2>&1 &
+        sleep 8
+        
+        KAMI_URL=$(grep -o "https://[a-z0-9.-]*\.kami\.dev" /tmp/kami.log | head -1)
+        TAILSCALE_IP=$(tailscale ip -4)
+        echo "KAMI_URL=$KAMI_URL" >> /tmp/vm_info
+        echo "TAILSCALE_IP=$TAILSCALE_IP" >> /tmp/vm_info
+        
+    - name: Keep Alive
+      run: |
+        for i in $(seq 1 360); do sleep 60; done
